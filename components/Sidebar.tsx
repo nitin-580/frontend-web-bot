@@ -21,8 +21,9 @@ export default function Sidebar() {
           <p className="text-gray-400 uppercase">Analytics</p>
           <NavItem label="Dashboard" href="/" />
           <NavItem label="Jobs" href="/Jobs" />
-          <NavItem label="Scheduled Task" href="/schedule" />
+          <NavItem label="Scheduled Task - (COMING SOON)" href="" />
           <NavItem label="History" href="/history" />
+          <NavItem label="Processes" href="/logs" />
         </div>
       </div>
     );

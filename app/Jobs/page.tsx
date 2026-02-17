@@ -1,24 +1,16 @@
 "use client";
 
 import Sidebar from "@/components/Sidebar";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-type ExecutionResult = {
-  keyword: string;
-  rank: number;
-  asinMatched: boolean;
-  fulfilled: boolean;
-  runtime: string;
-  worker: string;
-  proxy: string;
-};
-
-type JobHistory = {
+type BackendJob = {
   id: string;
-  asin: string;
-  runCount: number;
-  strategy: string;
-  executions: ExecutionResult[];
+  status: string;
+  productName?: string;
+  targetASIN?: string;
+  rankPosition?: string;
+  price?: string;
+  finishedAt?: string;
 };
 
 export default function JobsPage() {
@@ -27,57 +19,68 @@ export default function JobsPage() {
   const [runCount, setRunCount] = useState(1);
   const [strategy, setStrategy] = useState("Round Robin");
 
-  const [history, setHistory] = useState<JobHistory[]>([]);
+  const [jobs, setJobs] = useState<BackendJob[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const workers = ["Worker-1", "Worker-2", "Worker-3"];
-  const proxies = ["SOAX", "BrightData", "SmartProxy"];
+  const API_URL = process.env.NEXT_PUBLIC_API_URL!;
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY!;
 
-  const handleCreateJob = () => {
+  // 🔄 Fetch recent jobs
+  const fetchJobs = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/jobs`, {
+        headers: {
+          "x-api-key": API_KEY,
+        },
+      });
+
+      const data = await res.json();
+      setJobs(data);
+    } catch (err) {
+      console.error("Failed to fetch jobs", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchJobs();
+  }, []);
+
+  // 🚀 Create Job
+  const handleCreateJob = async () => {
     if (!keywords || !asin) {
       alert("Keywords and ASIN required");
       return;
     }
 
-    const keywordList = keywords
-      .split(",")
-      .map((k) => k.trim())
-      .filter(Boolean);
+    setLoading(true);
 
-    const executions: ExecutionResult[] = [];
+    try {
+      const res = await fetch(`${API_URL}/api/amazon/search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
+        },
+        body: JSON.stringify({
+          productName: keywords,
+          targetASIN: asin,
+          count: runCount,
+        }),
+      });
 
-    keywordList.forEach((keyword) => {
-      for (let i = 0; i < runCount; i++) {
-        const worker =
-          strategy === "Round Robin"
-            ? workers[i % workers.length]
-            : workers[Math.floor(Math.random() * workers.length)];
+      const data = await res.json();
 
-        executions.push({
-          keyword,
-          rank: Math.floor(Math.random() * 50) + 1,
-          asinMatched: Math.random() > 0.2,
-          fulfilled: Math.random() > 0.1,
-          runtime: `${Math.floor(Math.random() * 3) + 1}m ${
-            Math.floor(Math.random() * 60)
-          }s`,
-          worker,
-          proxy: proxies[Math.floor(Math.random() * proxies.length)],
-        });
-      }
-    });
+      console.log("Created Job:", data);
 
-    const newJob: JobHistory = {
-      id: `#JOB${Math.floor(Math.random() * 10000)}`,
-      asin,
-      runCount,
-      strategy,
-      executions,
-    };
-
-    setHistory([newJob, ...history]);
-    setKeywords("");
-    setAsin("");
-    setRunCount(1);
+      await fetchJobs(); // Refresh list
+    } catch (err) {
+      console.error("Failed to create job", err);
+    } finally {
+      setLoading(false);
+      setKeywords("");
+      setAsin("");
+      setRunCount(1);
+    }
   };
 
   return (
@@ -85,46 +88,54 @@ export default function JobsPage() {
       <Sidebar />
 
       <div className="flex-1 p-10 space-y-10">
-        <h1 className="text-3xl font-bold">Automation Control Panel</h1>
+        <h1 className="text-3xl font-bold">
+          Automation Control Panel
+        </h1>
 
         {/* Job Creator */}
         <div className="bg-white p-6 rounded-xl border shadow-sm">
-          <h2 className="font-semibold mb-6">Create Rank Tracking Job</h2>
+          <h2 className="font-semibold mb-6">
+            Create Rank Tracking Job
+          </h2>
 
           <div className="grid grid-cols-2 gap-6">
             <Input
-              label="Keywords (comma separated)"
+              label="Keyword"
               value={keywords}
               onChange={setKeywords}
-              placeholder="wireless mouse, gaming mouse"
+              placeholder="dish drying mat"
             />
 
             <Input
               label="ASIN"
               value={asin}
               onChange={setAsin}
-              placeholder="B08XYZ1234"
+              placeholder="B0GLH9JBDP"
             />
 
             <div>
               <label className="text-sm text-gray-500">
-                Run Count (per keyword)
+                Run Count
               </label>
               <input
                 type="number"
                 value={runCount}
-                onChange={(e) => setRunCount(Number(e.target.value))}
+                onChange={(e) =>
+                  setRunCount(Number(e.target.value))
+                }
                 className="mt-1 w-full border rounded-lg p-2"
               />
             </div>
 
             <div>
               <label className="text-sm text-gray-500">
-                Worker Selection Strategy
+                Strategy (UI Only)
               </label>
               <select
                 value={strategy}
-                onChange={(e) => setStrategy(e.target.value)}
+                onChange={(e) =>
+                  setStrategy(e.target.value)
+                }
                 className="mt-1 w-full border rounded-lg p-2"
               >
                 <option>Round Robin</option>
@@ -135,70 +146,66 @@ export default function JobsPage() {
 
           <button
             onClick={handleCreateJob}
-            className="mt-6 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+            disabled={loading}
+            className="mt-6 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            Create & Execute
+            {loading ? "Creating..." : "Create Job"}
           </button>
         </div>
 
-        {/* Execution History */}
-        {history.map((job) => (
-          <div
-            key={job.id}
-            className="bg-white p-6 rounded-xl border shadow-sm"
-          >
-            <div className="mb-4">
-              <h3 className="font-semibold text-lg">{job.id}</h3>
-              <p className="text-sm text-gray-500">
-                ASIN: {job.asin} | Runs: {job.runCount} | Strategy:{" "}
-                {job.strategy}
-              </p>
-            </div>
+        {/* Job History */}
+        <div className="bg-white p-6 rounded-xl border shadow-sm">
+          <h2 className="font-semibold mb-4">
+            Recent Jobs
+          </h2>
 
-            <table className="w-full text-sm">
-              <thead className="border-b text-gray-500">
-                <tr>
-                  <th className="py-2 text-left">Keyword</th>
-                  <th>Rank</th>
-                  <th>ASIN Matched</th>
-                  <th>Fulfilled</th>
-                  <th>Runtime</th>
-                  <th>Worker</th>
-                  <th>Proxy</th>
+          <table className="w-full text-sm">
+            <thead className="border-b text-gray-500">
+              <tr>
+                <th className="py-2 text-left">Job ID</th>
+                <th>Status</th>
+                <th>Keyword</th>
+                <th>ASIN</th>
+                <th>Rank</th>
+                <th>Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {jobs.map((job) => (
+                <tr key={job.id} className="border-b">
+                  <td className="py-2">#{job.id}</td>
+                  <td>
+                    <span
+                      className={`px-2 py-1 text-xs rounded-full ${
+                        job.status === "completed"
+                          ? "bg-green-100 text-green-600"
+                          : job.status === "failed"
+                          ? "bg-red-100 text-red-600"
+                          : "bg-yellow-100 text-yellow-600"
+                      }`}
+                    >
+                      {job.status}
+                    </span>
+                  </td>
+                  <td>{job.productName}</td>
+                  <td>{job.targetASIN}</td>
+                  <td>
+                    {job.rankPosition
+                      ? `#${job.rankPosition}`
+                      : "-"}
+                  </td>
+                  <td>{job.price || "-"}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {job.executions.map((exec, i) => (
-                  <tr key={i} className="border-b">
-                    <td className="py-2">{exec.keyword}</td>
-                    <td>#{exec.rank}</td>
-                    <td
-                      className={
-                        exec.asinMatched
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }
-                    >
-                      {exec.asinMatched ? "Yes" : "No"}
-                    </td>
-                    <td
-                      className={
-                        exec.fulfilled
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }
-                    >
-                      {exec.fulfilled ? "Yes" : "No"}
-                    </td>
-                    <td>{exec.runtime}</td>
-                    <td>{exec.worker}</td>
-                    <td>{exec.proxy}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
+              ))}
+            </tbody>
+          </table>
+
+          {jobs.length === 0 && (
+            <div className="text-gray-500 mt-4">
+              No jobs found.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
