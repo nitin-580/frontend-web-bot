@@ -1,30 +1,51 @@
-export default function ProxyStatus() {
-    return (
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <h2 className="font-semibold mb-4">Proxy Status</h2>
-  
-        <div className="space-y-3 text-sm">
-          <Status ip="45.12.32.11" country="US" latency="120ms" />
-          <Status ip="88.21.55.90" country="UK" latency="150ms" />
-          <Status ip="103.44.22.18" country="IN" latency="90ms" />
+"use client";
+
+import { useEffect, useState } from "react";
+
+export default function ServerHealthCard() {
+  const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL!;
+
+  const checkHealth = async () => {
+    try {
+      const res = await fetch(`${API_URL}/health`);
+      if (!res.ok) throw new Error("Server down");
+
+      const data = await res.json();
+      setIsHealthy(data.status === "ok");
+    } catch {
+      setIsHealthy(false);
+    }
+  };
+
+  useEffect(() => {
+    checkHealth();
+    const interval = setInterval(checkHealth, 10000); // check every 10s
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border p-6">
+      <h2 className="font-semibold mb-4 text-lg">Server Status</h2>
+
+      {isHealthy === null && (
+        <div className="text-gray-500 text-sm">Checking...</div>
+      )}
+
+      {isHealthy === true && (
+        <div className="flex items-center gap-2 text-green-600 font-medium">
+          <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
+          Server Online
         </div>
-      </div>
-    );
-  }
-  
-  function Status({
-    ip,
-    country,
-    latency,
-  }: {
-    ip: string;
-    country: string;
-    latency: string;
-  }) {
-    return (
-      <div className="flex justify-between">
-        <span>{ip} ({country})</span>
-        <span className="text-gray-500">{latency}</span>
-      </div>
-    );
-  }
+      )}
+
+      {isHealthy === false && (
+        <div className="flex items-center gap-2 text-red-600 font-medium">
+          <span className="w-3 h-3 rounded-full bg-red-500"></span>
+          Server Down
+        </div>
+      )}
+    </div>
+  );
+}

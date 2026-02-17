@@ -2,37 +2,49 @@
 
 import Sidebar from "@/components/Sidebar";
 import { useEffect, useState } from "react";
+import { io, Socket } from "socket.io-client";
 
 type BackendJob = {
   id: string;
-  status: string;
+  status: "waiting" | "running" | "completed" | "failed";
   productName?: string;
   targetASIN?: string;
-  rankPosition?: string;
+  rankPosition?: number;
   price?: string;
   finishedAt?: string;
+};
+
+type JobUpdatePayload = {
+  jobId: string;
+  status: "waiting" | "running" | "completed" | "failed";
+  rankPosition?: number;
+  price?: string;
 };
 
 export default function JobsPage() {
   const [keywords, setKeywords] = useState("");
   const [asin, setAsin] = useState("");
   const [runCount, setRunCount] = useState(1);
-  const [strategy, setStrategy] = useState("Round Robin");
-
   const [jobs, setJobs] = useState<BackendJob[]>([]);
   const [loading, setLoading] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL!;
   const API_KEY = process.env.NEXT_PUBLIC_API_KEY!;
 
-  // 🔄 Fetch recent jobs
+  // ----------------------------
+  // 🔹 FETCH JOBS
+  // ----------------------------
   const fetchJobs = async () => {
     try {
       const res = await fetch(`${API_URL}/api/jobs`, {
-        headers: {
-          "x-api-key": API_KEY,
-        },
+        headers: { "x-api-key": API_KEY },
       });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Jobs fetch failed:", text);
+        return;
+      }
 
       const data = await res.json();
       setJobs(data);
@@ -45,7 +57,59 @@ export default function JobsPage() {
     fetchJobs();
   }, []);
 
-  // 🚀 Create Job
+  // ----------------------------
+  // 🔥 REALTIME SOCKET
+  // ----------------------------
+  useEffect(() => {
+    const socket: Socket = io(API_URL, {
+      transports: ["websocket"],
+    });
+
+    socket.on("connect", () => {
+      console.log("🟢 Jobs WebSocket Connected");
+    });
+
+    socket.on("jobUpdate", (data: JobUpdatePayload) => {
+      console.log("📡 Jobs Update:", data);
+
+      setJobs((prev) => {
+        const exists = prev.find(
+          (job) => job.id === data.jobId
+        );
+
+        if (exists) {
+          return prev.map((job) =>
+            job.id === data.jobId
+              ? {
+                  ...job,
+                  status: data.status,
+                  rankPosition:
+                    data.rankPosition ?? job.rankPosition,
+                  price: data.price ?? job.price,
+                }
+              : job
+          );
+        }
+
+        // If job not in list yet → add it
+        return [
+          {
+            id: data.jobId,
+            status: data.status,
+          },
+          ...prev,
+        ];
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [API_URL]);
+
+  // ----------------------------
+  // 🚀 CREATE JOB
+  // ----------------------------
   const handleCreateJob = async () => {
     if (!keywords || !asin) {
       alert("Keywords and ASIN required");
@@ -68,11 +132,16 @@ export default function JobsPage() {
         }),
       });
 
-      const data = await res.json();
+      const text = await res.text();
 
-      console.log("Created Job:", data);
+      if (!res.ok) {
+        console.error("Create job failed:", text);
+        return;
+      }
 
-      await fetchJobs(); // Refresh list
+      console.log("Created:", text);
+
+      await fetchJobs();
     } catch (err) {
       console.error("Failed to create job", err);
     } finally {
@@ -83,6 +152,9 @@ export default function JobsPage() {
     }
   };
 
+  // ----------------------------
+  // UI
+  // ----------------------------
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
@@ -92,7 +164,7 @@ export default function JobsPage() {
           Automation Control Panel
         </h1>
 
-        {/* Job Creator */}
+        {/* Create Job */}
         <div className="bg-white p-6 rounded-xl border shadow-sm">
           <h2 className="font-semibold mb-6">
             Create Rank Tracking Job
@@ -126,22 +198,6 @@ export default function JobsPage() {
                 className="mt-1 w-full border rounded-lg p-2"
               />
             </div>
-
-            <div>
-              <label className="text-sm text-gray-500">
-                Strategy (UI Only)
-              </label>
-              <select
-                value={strategy}
-                onChange={(e) =>
-                  setStrategy(e.target.value)
-                }
-                className="mt-1 w-full border rounded-lg p-2"
-              >
-                <option>Round Robin</option>
-                <option>Random</option>
-              </select>
-            </div>
           </div>
 
           <button
@@ -153,7 +209,7 @@ export default function JobsPage() {
           </button>
         </div>
 
-        {/* Job History */}
+        {/* Job Table */}
         <div className="bg-white p-6 rounded-xl border shadow-sm">
           <h2 className="font-semibold mb-4">
             Recent Jobs
@@ -170,31 +226,36 @@ export default function JobsPage() {
                 <th>Price</th>
               </tr>
             </thead>
+
             <tbody>
               {jobs.map((job) => (
                 <tr key={job.id} className="border-b">
                   <td className="py-2">#{job.id}</td>
+
                   <td>
-                    <span
-                      className={`px-2 py-1 text-xs rounded-full ${
-                        job.status === "completed"
-                          ? "bg-green-100 text-green-600"
-                          : job.status === "failed"
-                          ? "bg-red-100 text-red-600"
-                          : "bg-yellow-100 text-yellow-600"
-                      }`}
-                    >
-                      {job.status}
-                    </span>
+                    <StatusBadge status={job.status} />
                   </td>
+
                   <td>{job.productName}</td>
                   <td>{job.targetASIN}</td>
+
                   <td>
-                    {job.rankPosition
-                      ? `#${job.rankPosition}`
-                      : "-"}
+                    {job.status === "running" ? (
+                      <LoadingSpinner />
+                    ) : job.rankPosition ? (
+                      `#${job.rankPosition}`
+                    ) : (
+                      "-"
+                    )}
                   </td>
-                  <td>{job.price || "-"}</td>
+
+                  <td>
+                    {job.status === "running" ? (
+                      <LoadingSpinner />
+                    ) : (
+                      job.price || "-"
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -207,6 +268,33 @@ export default function JobsPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const colors: any = {
+    waiting: "bg-gray-100 text-gray-600",
+    running: "bg-yellow-100 text-yellow-600",
+    completed: "bg-green-100 text-green-600",
+    failed: "bg-red-100 text-red-600",
+  };
+
+  return (
+    <span
+      className={`px-3 py-1 text-xs rounded-full ${
+        colors[status] || "bg-gray-100"
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function LoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center">
+      <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
     </div>
   );
 }
@@ -224,7 +312,9 @@ function Input({
 }) {
   return (
     <div>
-      <label className="text-sm text-gray-500">{label}</label>
+      <label className="text-sm text-gray-500">
+        {label}
+      </label>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
