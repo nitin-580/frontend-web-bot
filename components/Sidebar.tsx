@@ -21,14 +21,8 @@ export default function Sidebar() {
           <p className="text-gray-400 uppercase">Analytics</p>
           <NavItem label="Dashboard" href="/" />
           <NavItem label="Jobs" href="/Jobs" />
-          <SidebarItem label="Scheduled Jobs" />
-          <SidebarItem label="History" />
-  
-          <p className="text-gray-400 uppercase mt-6">System</p>
-          <SidebarItem label="Workers" />
-          <SidebarItem label="Proxies" />
-          <SidebarItem label="Logs" />
-          <SidebarItem label="Settings" />
+          <NavItem label="Scheduled Task" href="/schedule" />
+          <NavItem label="History" href="/history" />
         </div>
       </div>
     );
